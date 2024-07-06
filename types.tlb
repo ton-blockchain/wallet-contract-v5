@@ -4,15 +4,15 @@ out_list$_ {n:#} prev:^(OutList n) action:OutAction = OutList (n + 1);
 action_send_msg#0ec3c86d mode:(## 8) out_msg:^(MessageRelaxed Any) = OutAction;
 
 // Extended actions in W5:
-action_list_none$_ = ActionList 0;
-action_list_last$_ action:ExtendedAction = ActionList 1;
+action_list_empty$_ = ActionList 0;
+action_list_one$_ action:ExtendedAction = ActionList 1;
 action_list_more$_ {m > 1} action:ExtendedAction prev:^(ActionList m) = ActionList (m+1);
 
 action_add_ext#02 addr:MsgAddressInt = ExtendedAction;
 action_delete_ext#03 addr:MsgAddressInt = ExtendedAction;
 action_set_signature_auth_allowed#04 allowed:(## 1) = ExtendedAction;
 
-actions$_ {n:#} out_actions:(Maybe ^(OutList n)) has_other_actions:(## 1) {m:#} other_actions:(ActionList m) = InnerRequest;
+actions$_ {n:#} out_actions:(Maybe ^(OutList n)) {m:#} has_other_actions:(Maybe (ActionList m)) = InnerRequest;
 
 signed_request$_             // 32 (opcode from outer)
   wallet_id:    #            // 32
