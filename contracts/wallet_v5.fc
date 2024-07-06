@@ -33,6 +33,7 @@ const int size::query_id = 64;
 const int prefix::signed_external = 0x7369676E;
 const int prefix::signed_internal = 0x73696E74;
 const int prefix::extension_action = 0x6578746E;
+const int prefix::bounced = 0xffffff;
 
 (slice, int) check_and_remove_add_extension_prefix(slice body) impure asm "x{02} SDBEGINSQ";
 (slice, int) check_and_remove_remove_extension_prefix(slice body) impure asm "x{03} SDBEGINSQ";
@@ -225,7 +226,10 @@ cell verify_c5_actions(cell c5, int is_external) inline {
     return (); ;; just receive Toncoins
   }
 
-  ;; bounced messages has 0xffffff prefix and skipped by op check
+  ;; bounced messages has 0xffffff prefix
+  if (op == prefix::bounced) {
+    return ();
+  }
 
   if (op == prefix::extension_action) {
     in_msg_body~skip_bits(size::message_operation_prefix);
