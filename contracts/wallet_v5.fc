@@ -85,7 +85,6 @@ cell verify_c5_actions(cell c5, int is_external) inline {
     count += 1;
   }
   throw_unless(error::invalid_c5, count <= 255);
-  throw_unless(error::invalid_c5, cs.slice_refs() == 0);
 
   return c5;
 }
@@ -202,7 +201,7 @@ cell verify_c5_actions(cell c5, int is_external) inline {
     .end_cell());
 
   if (is_external) {
-    ;; For external messages we commit seqno changes, so that even if an exception occurs further on, the reply-protection will still work.
+    ;; For external messages we commit seqno changes, so that even if an exception occurs further on, the replay-protection will still work.
     commit();
   }
 
