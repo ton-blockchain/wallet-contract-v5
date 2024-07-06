@@ -6,7 +6,7 @@ action_send_msg#0ec3c86d mode:(## 8) out_msg:^(MessageRelaxed Any) = OutAction;
 // Extended actions in W5:
 action_list_empty$_ = ActionList 0;
 action_list_one$_ action:ExtendedAction = ActionList 1;
-action_list_more$_ {m > 1} action:ExtendedAction prev:^(ActionList m) = ActionList (m+1);
+action_list_more$_ {m >= 1} action:ExtendedAction prev:^(ActionList m) = ActionList (m+1);
 
 action_add_ext#02 addr:MsgAddressInt = ExtendedAction;
 action_delete_ext#03 addr:MsgAddressInt = ExtendedAction;
