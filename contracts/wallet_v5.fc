@@ -101,7 +101,7 @@ cell verify_c5_actions(cell c5, int is_external) inline {
   }
 
   ;; Loop extended actions
-  while (true) {
+  do {
     int is_add_extension = cs~check_and_remove_add_extension_prefix();
     int is_remove_extension = is_add_extension ? 0 : cs~check_and_remove_remove_extension_prefix();
     ;; Add/remove extensions
@@ -156,7 +156,7 @@ cell verify_c5_actions(cell c5, int is_external) inline {
       return ();
     }
     cs = cs.preload_ref().begin_parse();
-  }
+  } until (cs.slice_empty?());
 }
 
 ;; ------------------------------------------------------------------------------------------------
