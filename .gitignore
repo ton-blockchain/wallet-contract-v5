@@ -1,4 +1,4 @@
 node_modules
 temp
-build
 .idea
+.env

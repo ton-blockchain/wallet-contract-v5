@@ -1,0 +1,19 @@
+#pragma version =0.4.4;
+#include "imports/stdlib.fc";
+
+() set_lib_code(cell code, int mode) impure asm "SETLIBCODE";
+
+() deploy_lib() impure {
+  set_lib_code(get_data(), 2);
+  cell empty = begin_cell().end_cell();
+  set_code(empty);
+  set_data(empty);
+}
+
+() recv_internal() impure {
+  deploy_lib();
+}
+
+() recv_external() impure {
+  deploy_lib();
+}

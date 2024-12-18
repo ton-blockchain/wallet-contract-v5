@@ -1,0 +1,16 @@
+#!/usr/bin/fift -s
+"Asm.fif" include
+"Disasm.fif" include
+
+"../build/wallet_v5_compiled.txt" file>B B>$ x>B B>boc
+
+show-vm-code std-disasm +indent +indent
+
+."Disasm" cr
+dup <s disasm cr
+
+."Cell tree:" cr
+dup <s csr. cr
+
+."Free bits in root cell"
+dup <s sbits 1023 - -1 * ." " dup . ." (" 8 / . ."bytes)" cr

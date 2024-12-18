@@ -5,22 +5,20 @@
         "start": "blueprint run",
         "build": "blueprint build",
         "build:v5": "blueprint build wallet_v5",
-        "test": "jest"
+        "deploy-library": "npx blueprint run deployLibrary",
+        "deploy-wallet": "blueprint run deployWalletV5",
+        "print-wallet-code": "ts-node ./scripts/printWalletCode.ts",
+        "test": "jest",
+        "scalpel": "bash ./scripts/scalpel.sh"
     },
     "devDependencies": {
-        "@ton-community/blueprint": "^0.12.0",
-        "@ton-community/sandbox": "^0.11.0",
-        "@ton-community/test-utils": "^0.3.0",
+        "@ton/blueprint": "^0.21.0",
+        "@ton/core": "^0.56.3",
+        "@ton/crypto": "^3.2.0",
+        "@ton/sandbox": "^0.20.0",
+        "@ton/test-utils": "^0.4.2",
         "@types/jest": "^29.5.0",
         "@types/node": "^20.2.5",
-        "jest": "^29.5.0",
-        "prettier": "^2.8.6",
-        "ton": "~13.6.0",
-        "ton-core": "^0.51.0",
-        "ton-crypto": "^3.2.0",
-        "ts-jest": "^29.0.5",
-        "ts-node": "^10.9.1",
-        "typescript": "^4.9.5",
         "@typescript-eslint/eslint-plugin": "^5.38.1",
         "@typescript-eslint/parser": "^5.38.1",
         "eslint": "8.22.0",
@@ -28,6 +26,16 @@
         "eslint-config-prettier": "^8.5.0",
         "eslint-plugin-import": "^2.26.0",
         "eslint-plugin-prettier": "^4.2.1",
-        "eslint-plugin-unused-imports": "^2.0.0"
+        "eslint-plugin-unused-imports": "^2.0.0",
+        "jest": "^29.7.0",
+        "prettier": "^2.8.6",
+        "ton": "~13.6.0",
+        "ts-jest": "^29.0.5",
+        "ts-node": "^10.9.1",
+        "typescript": "^5.5.2"
+    },
+    "overrides": {
+        "@ton-community/func-js-bin": "0.4.5-tvmbeta.3",
+        "@ton-community/func-js": "0.7.0"
     }
 }

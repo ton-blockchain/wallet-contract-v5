@@ -9,12 +9,21 @@ import {
     contractAddress,
     ContractProvider,
     Dictionary,
+    MessageRelaxed,
+    storeOutList,
+    OutAction,
     Sender,
-    SendMode
-} from 'ton-core';
+    SendMode,
+    Builder,
+    OutActionSendMsg,
+    toNano
+} from '@ton/core';
 import { bufferToBigInt } from '../tests/utils';
 
+import { sign } from '@ton/crypto';
+
 export type WalletV5Config = {
+    signatureAllowed: boolean;
     seqno: number;
     walletId: bigint;
     publicKey: Buffer;
@@ -23,10 +32,11 @@ export type WalletV5Config = {
 
 export function walletV5ConfigToCell(config: WalletV5Config): Cell {
     return beginCell()
+        .storeBit(config.signatureAllowed)
         .storeUint(config.seqno, 32)
-        .storeUint(config.walletId, 80)
+        .storeUint(config.walletId, 32)
         .storeBuffer(config.publicKey, 32)
-        .storeDict(config.extensions, Dictionary.Keys.BigUint(256), Dictionary.Values.BigInt(8))
+        .storeDict(config.extensions, Dictionary.Keys.BigUint(256), Dictionary.Values.BigInt(1))
         .endCell();
 }
 
@@ -34,10 +44,12 @@ export const Opcodes = {
     action_send_msg: 0x0ec3c86d,
     action_set_code: 0xad4de08e,
     action_extended_set_data: 0x1ff8ea0b,
-    action_extended_add_extension: 0x1c40db9f,
-    action_extended_remove_extension: 0x5eaef4a4,
+    action_extended_add_extension: 0x02,
+    action_extended_remove_extension: 0x03,
+    action_extended_set_signature_auth_allowed: 0x04,
     auth_extension: 0x6578746e,
-    auth_signed: 0x7369676e
+    auth_signed: 0x7369676e,
+    auth_signed_internal: 0x73696e74
 };
 
 export class WalletId {
@@ -45,30 +57,30 @@ export class WalletId {
         v5: 0
     };
 
-    static deserialize(walletId: bigint | Buffer): WalletId {
-        const bitReader = new BitReader(
-            new BitString(
-                typeof walletId === 'bigint' ? Buffer.from(walletId.toString(16), 'hex') : walletId,
-                0,
-                80
-            )
-        );
-        const networkGlobalId = bitReader.loadInt(32);
-        const workChain = bitReader.loadInt(8);
-        const walletVersionRaw = bitReader.loadUint(8);
-        const subwalletNumber = bitReader.loadUint(32);
-
-        const walletVersion = Object.entries(this.versionsSerialisation).find(
-            ([_, value]) => value === walletVersionRaw
-        )?.[0] as WalletId['walletVersion'] | undefined;
-
-        if (walletVersion === undefined) {
-            throw new Error(
-                `Can't deserialize walletId: unknown wallet version ${walletVersionRaw}`
-            );
-        }
-
-        return new WalletId({ networkGlobalId, workChain, walletVersion, subwalletNumber });
+    static deserialize(walletId: bigint): WalletId {
+        // const bitReader = new BitReader(
+        //     new BitString(
+        //         typeof walletId === 'bigint' ? Buffer.from(walletId.toString(16), 'hex') : walletId,
+        //         0,
+        //         32
+        //     )
+        // );
+        // const networkGlobalId = bitReader.loadInt(32);
+        // const workChain = bitReader.loadInt(8);
+        // const walletVersionRaw = bitReader.loadUint(8);
+        const subwalletNumber = walletId;
+        //
+        // const walletVersion = Object.entries(this.versionsSerialisation).find(
+        //     ([_, value]) => value === walletVersionRaw
+        // )?.[0] as WalletId['walletVersion'] | undefined;
+        //
+        // if (walletVersion === undefined) {
+        //     throw new Error(
+        //         `Can't deserialize walletId: unknown wallet version ${walletVersionRaw}`
+        //     );
+        // }
+        //
+        return new WalletId({ networkGlobalId: 0, workChain: 0, walletVersion: 'v5', subwalletNumber: Number(walletId) });
     }
 
     readonly walletVersion: 'v5';
@@ -93,13 +105,13 @@ export class WalletId {
         this.subwalletNumber = args?.subwalletNumber ?? 0;
         this.walletVersion = args?.walletVersion ?? 'v5';
 
-        const bitBuilder = new BitBuilder(80);
-        bitBuilder.writeInt(this.networkGlobalId, 32);
-        bitBuilder.writeInt(this.workChain, 8);
-        bitBuilder.writeUint(WalletId.versionsSerialisation[this.walletVersion], 8);
-        bitBuilder.writeUint(this.subwalletNumber, 32);
+        // const bitBuilder = new BitBuilder(32);
+        // bitBuilder.writeInt(this.networkGlobalId, 32);
+        // bitBuilder.writeInt(this.workChain, 8);
+        // bitBuilder.writeUint(WalletId.versionsSerialisation[this.walletVersion], 8);
+        // bitBuilder.writeUint(this.subwalletNumber, 32);
 
-        this.serialized = bufferToBigInt(bitBuilder.buffer());
+        this.serialized = BigInt(this.subwalletNumber) // bufferToBigInt(bitBuilder.buffer());
     }
 }
 
@@ -136,7 +148,7 @@ export class WalletV5 implements Contract {
             value: opts.value,
             sendMode: SendMode.PAY_GAS_SEPARATELY,
             body: beginCell()
-                .storeUint(Opcodes.auth_signed, 32)
+                // .storeUint(Opcodes.auth_signed_internal, 32) // Is signed inside message
                 .storeSlice(opts.body.beginParse())
                 .endCell()
         });
@@ -155,6 +167,7 @@ export class WalletV5 implements Contract {
             sendMode: SendMode.PAY_GAS_SEPARATELY,
             body: beginCell()
                 .storeUint(Opcodes.auth_extension, 32)
+                .storeUint(0, 64) // query id
                 .storeSlice(opts.body.beginParse())
                 .endCell()
         });
@@ -169,9 +182,7 @@ export class WalletV5 implements Contract {
     }
 
     async sendExternalSignedMessage(provider: ContractProvider, body: Cell) {
-        await provider.external(
-            beginCell().storeUint(Opcodes.auth_signed, 32).storeSlice(body.beginParse()).endCell()
-        );
+        await provider.external(body);
     }
 
     async sendExternal(provider: ContractProvider, body: Cell) {
@@ -184,12 +195,27 @@ export class WalletV5 implements Contract {
     }
 
     async getSeqno(provider: ContractProvider) {
-        const result = await provider.get('seqno', []);
-        return result.stack.readNumber();
+        const state = await provider.getState();
+        if (state.state.type === 'active') {
+            let res = await provider.get('seqno', []);
+            return res.stack.readNumber();
+        } else {
+            return 0;
+        }
+    }
+
+    async getIsSignatureAuthAllowed(provider: ContractProvider) {
+        const state = await provider.getState();
+        if (state.state.type === 'active') {
+            let res = await provider.get('is_signature_allowed', []);
+            return res.stack.readNumber();
+        } else {
+            return -1;
+        }
     }
 
     async getWalletId(provider: ContractProvider) {
-        const result = await provider.get('get_wallet_id', []);
+        const result = await provider.get('get_subwallet_id', []);
         return WalletId.deserialize(result.stack.readBigNumber());
     }
 
@@ -206,14 +232,14 @@ export class WalletV5 implements Contract {
 
         const dict: Dictionary<bigint, bigint> = Dictionary.loadDirect(
             Dictionary.Keys.BigUint(256),
-            Dictionary.Values.BigInt(8),
+            Dictionary.Values.BigInt(1),
             extensions
         );
 
         return dict.keys().map(key => {
-            const wc = dict.get(key)!;
-            const addressHex = key ^ (wc + 1n);
-            return Address.parseRaw(`${wc}:${addressHex.toString(16)}`);
+            const wc = this.address.workChain;
+            const addressHex = key;
+            return Address.parseRaw(`${wc}:${addressHex.toString(16).padStart(64, '0')}`);
         });
     }
 }
