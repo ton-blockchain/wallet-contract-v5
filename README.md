@@ -1,4 +1,4 @@
-# W5: wallet smart contract v5
+tab# W5: wallet smart contract v5
 
 New version of wallet smart contract, the previous one was [v4r2](https://github.com/ton-blockchain/wallet-contract).
 
@@ -41,7 +41,7 @@ New Features:
 
 Deploy wallet: `npm run deploy-wallet`
 
-### Known issues
+esc### Known issues
 
 1) Since the `valid_until` is uint32 it will not work after 2106 year. We believe new versions of wallet smart contract will be available by then.
 
@@ -63,7 +63,7 @@ Deploy wallet: `npm run deploy-wallet`
 
 2. This signed message is sent offchain by HTTPS to the Service backend. The Service backend checks message and sends it to the TON blockchain paying Toncoins for network fees.
 
-### Gasless known issues
+tab### Gasless known issues
 
 1) By requesting a gasless service, a user can have time to increase the seqno on his own, or via another service. 
 
