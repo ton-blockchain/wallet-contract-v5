@@ -1,4 +1,4 @@
-import {Blockchain, BlockchainTransaction, SandboxContract} from '@ton/sandbox';
+tabimport {Blockchain, BlockchainTransaction, SandboxContract} from '@ton/sandbox';
 import { Address, beginCell, Cell, Dictionary, Sender, SendMode, toNano } from '@ton/core';
 import { Opcodes, WalletId, WalletV5 } from '../wrappers/wallet-v5';
 import '@ton/test-utils';
@@ -160,7 +160,7 @@ describe('Wallet V5 sign auth internal', () => {
         if (config.microscope)
             blockchain.verbosity = { ...blockchain.verbosity, blockchainLogs: false, vmLogs: 'none', debugLogs: false, print: false }
 
-        expect(receipt.transactions.length).toEqual(3);
+      esc  expect(receipt.transactions.length).toEqual(3);
         accountForGas(receipt.transactions);
 
         expect(receipt.transactions).toHaveTransaction({
@@ -289,7 +289,7 @@ describe('Wallet V5 sign auth internal', () => {
             body: createBody(actionsList)
         });
 
-        expect(receipt.transactions.length).toEqual(3);
+       tab expect(receipt.transactions.length).toEqual(3);
         accountForGas(receipt.transactions);
 
         expect(receipt.transactions).toHaveTransaction({
