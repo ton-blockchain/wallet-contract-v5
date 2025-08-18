@@ -23,7 +23,7 @@ internal_signed#73696e74 signed:SignedRequest = InternalMsgBody;
 internal_extension#6578746e query_id:(## 64) inner:InnerRequest = InternalMsgBody;
 external_signed#7369676e signed:SignedRequest = ExternalMsgBody;
 
-actions$_ out_actions:(Maybe OutList) has_other_actions:(## 1) {m:#} {n:#} other_actions:(ActionList n m) = InnerRequest;
+actions$_ out_actions:(Maybe ^OutList) has_other_actions:(## 1) {m:#} {n:#} other_actions:(ActionList n m) = InnerRequest;
 
 // Contract state
 contract_state$_ is_signature_allowed:(## 1) seqno:# wallet_id:(## 32) public_key:(## 256) extensions_dict:(HashmapE 256 int1) = ContractState;
