@@ -11,7 +11,7 @@ extended_list_action$_ {m:#} action:W5ExtendedAction prev:^(W5ExtendedActionList
 
 add_extension#02 addr:MsgAddressInt = W5ExtendedAction;
 delete_extension#03 addr:MsgAddressInt = W5ExtendedAction;
-set_signature_auth_allowed#04 allowed:(## 1) = W5ExtendedAction;
+set_signature_auth_allowed#04 allowed:Bool = W5ExtendedAction;
 
 w5_actions_request$_ {m:#} {n:#} out_actions:(Maybe ^(OutList m)) extended_actions:(Maybe (W5ExtendedActionList n)) = W5InnerRequest m n;
 
