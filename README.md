@@ -49,10 +49,6 @@ Deploy wallet: `npm run deploy-wallet`
 
 3) It would be good to do `end_parse()` for messages and contract data. But this is not done within optimisations.
 
-### Known security issues
-
-1) TON does not have built-in protection against replaying messages from testnet to mainnet. The wallet contract addresses this by encoding the network ID into the subwallet_id. Therefore, wallets on different networks MUST have different addresses.
-
 ### Gasless flow
 
 1. When sending an USDt (or other Jetton) the user signs one message containing two outgoing USDt transfers:
