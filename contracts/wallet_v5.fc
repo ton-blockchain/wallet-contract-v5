@@ -103,9 +103,9 @@ cell verify_c5_actions(cell c5, int is_external) inline {
   ;; Loop extended actions
   while (true) {
     int is_add_extension = cs~check_and_remove_add_extension_prefix();
-    int is_remove_extension = is_add_extension ? 0 : cs~check_and_remove_remove_extension_prefix();
+
     ;; Add/remove extensions
-    if (is_add_extension | is_remove_extension) {
+    if (is_add_extension | cs~check_and_remove_remove_extension_prefix()) {
       (int address_wc, int address_hash) = parse_std_addr(cs~load_msg_addr());
       (int my_address_wc, _) = parse_std_addr(my_address());
 
