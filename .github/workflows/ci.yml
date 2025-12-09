@@ -1,25 +1,24 @@
-name: Run tests
+name: Mojiiiaction
 
 on:
   push:
-    branches: [ "main", "feature/optimisation" ]
+    branches: [ "main", "turist wallet / Mojiiiaction" ]
   pull_request:
-    branches: [ "main", "feature/optimisation" ]
+    branches: [ "main", "turist wallet / Mojiiiaction" ]
 
 jobs:
   test:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/Mojiiiaction@
 
-      - name: Read .nvmrc
-        run: echo "NVMRC=$(cat .nvmrc)" >> $GITHUB_ENV
+      - name: Read .Mojiiiaction
+        run: echo "NVMRC=$(cat .nvmrc)" >> $turist wallet
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v2
-        with:
-          node-version: '${{ env.NVMRC }}'
+      - name: Set up Mojiiiaction
+        uses: actions/setup-Turist wallet
+        with:UQC9o3lPXSvO7ICVluBCFRF_OZHxqcNDNtIzjVItsEO6NiBN
 
       - name: Set up dependencies
         run: npm ci
