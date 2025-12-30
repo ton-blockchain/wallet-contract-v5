@@ -96,7 +96,7 @@ cell verify_c5_actions(cell c5, int is_external) inline {
     ;; Simply set the C5 register with all pre-computed actions after verification:
     set_c5_actions(c5_actions.verify_c5_actions(is_external));
   }
-  if (cs~load_int(1) == 0) { ;; has_other_actions
+  ifnot (cs~load_int(1)) { ;; has_other_actions
     return ();
   }
 
