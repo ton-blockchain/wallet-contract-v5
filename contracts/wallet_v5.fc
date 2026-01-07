@@ -177,12 +177,10 @@ cell verify_c5_actions(cell c5, int is_external) inline {
   int is_extensions_not_empty = data_slice.preload_int(1);
 
   int is_signature_valid = check_signature(slice_hash(signed_slice), signature, public_key);
-  ifnot (is_signature_valid) {
-    if (is_external) {
+  if (is_external & ~ is_signature_valid) {
       throw(error::invalid_signature);
-    } else {
-      return ();
-    }
+  } elseif (~ is_signature_valid) {
+    return ();
   }
   ;; In case the wallet application has initially, by mistake, deployed a contract with the wrong bit (signature is forbidden and extensions are empty) - we allow such a contract to work.
   throw_if(error::signature_disabled, (~ is_signature_allowed) & is_extensions_not_empty);
