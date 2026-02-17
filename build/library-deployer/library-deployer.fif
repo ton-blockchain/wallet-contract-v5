@@ -1,0 +1,22 @@
+// automatically generated from `contracts/library-deployer.fc` incl:`contracts/imports/stdlib.fc` 
+PROGRAM{
+  DECLPROC deploy_lib
+  DECLPROC recv_internal
+  DECLPROC recv_external
+  deploy_lib PROC:<{
+    c4 PUSH
+    2 PUSHINT
+    SETLIBCODE
+    NEWC
+    ENDC
+    DUP
+    SETCODE
+    c4 POP
+  }>
+  recv_internal PROC:<{
+    deploy_lib CALLDICT
+  }>
+  recv_external PROC:<{
+    deploy_lib CALLDICT
+  }>
+}END>c
