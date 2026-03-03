@@ -1,6 +1,4 @@
-import { Cell, Slice, toNano, beginCell, Address, Dictionary, Message, DictionaryValue, Transaction, BitString, SendMode, MessageRelaxed, CommonMessageInfoInternal, storeMessage, storeMessageRelaxed } from '@ton/core';
-import { internal } from '@ton/sandbox';
-import { randomAddress } from './utils';
+import { Cell, Slice, toNano, beginCell, Address, Dictionary, Message, DictionaryValue, Transaction, storeStateInit } from '@ton/core';
 
 export type GasPrices = {
 	flat_gas_limit: bigint,
@@ -202,61 +200,75 @@ export function computeCellForwardFees(msgPrices: MsgPrices, msg: Cell) {
     return computeFwdFees(msgPrices, storageStats.cells, storageStats.bits);
 }
 export function computeMessageForwardFees(msgPrices: MsgPrices, msg: Message)  {
-    // let msg = loadMessageRelaxed(cell.beginParse());
-    let storageStats = new StorageStats();
-
     if( msg.info.type !== "internal") {
         throw Error("Helper intended for internal messages");
     }
+
+    let storageStats = new StorageStats();
     const defaultFwd = computeDefaultForwardFee(msgPrices);
     // If message forward fee matches default than msg cell is flat
     if(msg.info.forwardFee == defaultFwd) {
-        return {fees: {total: msgPrices.lumpPrice, res : defaultFwd, remaining: defaultFwd}, stats: storageStats};
+        return {fees: computeFwdFeesVerbose(msgPrices, 0n, 0n), stats: storageStats};
     }
-    let visited : Array<string> = [];
-    // Init
-    if (msg.init) {
-        let addBits  = 5n; // Minimal additional bits
-        let refCount = 0;
-        if(msg.init.splitDepth) {
-            addBits += 5n;
-        }
-        if(msg.init.libraries) {
-            refCount++;
-            storageStats = storageStats.add(collectCellStats(beginCell().storeDictDirect(msg.init.libraries).endCell(), visited, true));
-        }
-        if(msg.init.code) {
-            refCount++;
-            storageStats = storageStats.add(collectCellStats(msg.init.code, visited))
-        }
-        if(msg.init.data) {
-            refCount++;
-            storageStats = storageStats.add(collectCellStats(msg.init.data, visited));
-        }
-        if(refCount >= 2) { //https://github.com/ton-blockchain/ton/blob/51baec48a02e5ba0106b0565410d2c2fd4665157/crypto/block/transaction.cpp#L2079
-            storageStats.cells++;
-            storageStats.bits += addBits;
-        }
-    }
-    const lumpBits  = BigInt(msg.body.bits.length);
-    const bodyStats = collectCellStats(msg.body,visited, true);
-    storageStats = storageStats.add(bodyStats);
 
-    // NOTE: Extra currencies are ignored for now
-    let fees = computeFwdFeesVerbose(msgPrices, BigInt(storageStats.cells), BigInt(storageStats.bits));
-    // Meeh
-    if(fees.remaining < msg.info.forwardFee) {
-        // console.log(`Remaining ${fees.remaining} < ${msg.info.forwardFee} lump bits:${lumpBits}`);
-        storageStats = storageStats.addCells(1).addBits(lumpBits);
-        fees = computeFwdFeesVerbose(msgPrices, storageStats.cells, storageStats.bits);
+    // C++ reference:
+    // sstat.add_used_storage(msg.init, true, 3);
+    // sstat.add_used_storage(msg.body, true, 3);
+    // skip_root_count=3 means "do not count root cell and root bits", only referenced cells.
+    // For StateInit and body we need to account for both encodings:
+    //   - inline:  (Either left)  -> root is skipped, only refs are counted
+    //   - by ref:  (Either right) -> referenced root cell is counted
+    const initCell = msg.init ? beginCell().store(storeStateInit(msg.init)).endCell() : null;
+    const initModes = initCell ? [false, true] : [false]; // false = inline, true = by ref
+    const bodyModes = [false, true]; // false = inline, true = by ref
+
+    let bestAttempt: {
+        fees: ReturnType<typeof computeFwdFeesVerbose>,
+        stats: StorageStats,
+        delta: bigint,
+        initByRef: boolean,
+        bodyByRef: boolean
+    } | null = null;
+
+    const absBigInt = (v: bigint) => v < 0n ? -v : v;
+
+    for (const initByRef of initModes) {
+        for (const bodyByRef of bodyModes) {
+            let candidateStats = new StorageStats();
+            let visited: Array<string> = [];
+
+            if (initCell) {
+                candidateStats = candidateStats.add(collectCellStats(initCell, visited, !initByRef));
+            }
+            candidateStats = candidateStats.add(collectCellStats(msg.body, visited, !bodyByRef));
+
+            // NOTE: Extra currencies are ignored for now
+            const candidateFees = computeFwdFeesVerbose(msgPrices, candidateStats.cells, candidateStats.bits);
+            const delta = candidateFees.remaining - msg.info.forwardFee;
+
+            if (bestAttempt === null || absBigInt(delta) < absBigInt(bestAttempt.delta)) {
+                bestAttempt = {
+                    fees: candidateFees,
+                    stats: candidateStats,
+                    delta,
+                    initByRef,
+                    bodyByRef
+                };
+            }
+
+            if (delta === 0n) {
+                return {fees: candidateFees, stats: candidateStats};
+            }
+        }
     }
-    if(fees.remaining != msg.info.forwardFee) {
-        console.log("Result fees:", fees);
-        console.log(msg);
-        console.log(fees.remaining);
-        throw(new Error("Something went wrong in fee calcuation!"));
+
+    if (bestAttempt !== null) {
+        console.log("Result fees:", msg.info.forwardFee);
+        console.log("Closest delta:", bestAttempt.delta);
+        console.log("Closest remaining:", bestAttempt.fees.remaining);
+        console.log("Closest layout:", `initByRef=${bestAttempt.initByRef}, bodyByRef=${bestAttempt.bodyByRef}`);
     }
-    return {fees, stats: storageStats};
+    throw(new Error("Something went wrong in fee calculation!"));
 }
 
 export const configParseMsgPrices = (sc: Slice) => {
@@ -320,96 +332,4 @@ export function computeFwdFeesVerbose(msgPrices: MsgPrices, cells: bigint | numb
         res,
         remaining: fees - res
     }
-}
-
-export const setPrecompiledGas = (configRaw: Cell, code_hash: Buffer, gas_usage: number) => {
-    const config = configRaw.beginParse().loadDictDirect(Dictionary.Keys.Int(32), Dictionary.Values.Cell());
-
-    const entry = beginCell().storeUint(0xb0, 8)
-      .storeUint(gas_usage, 64)
-      .endCell().beginParse();
-    let dict = Dictionary.empty(Dictionary.Keys.Buffer(32), Dictionary.Values.BitString(8 + 64));
-    dict.set(code_hash, entry.loadBits(8 + 64));
-    const param = beginCell().storeUint(0xc0, 8).storeBit(1).storeRef(beginCell().storeDictDirect(dict).endCell()).endCell();
-
-    config.set(45, param);
-
-    return beginCell().storeDictDirect(config).endCell();
-};
-
-export const estimateMessageImpact = <T extends Transaction>(message: MessageRelaxed, sendTx: T, msgPrices: MsgPrices, balanceBefore: bigint, mode: SendMode, computed: boolean) => {
-
-    if(message.info.type !== 'internal') {
-        throw new TypeError("External message is not supported!");
-    }
-
-    const computePhase = computedGeneric(sendTx);
-
-    let inValue   = 0n;
-    let inMessage = sendTx.inMessage;
-    let feesPaid  = false;
-
-    if(inMessage) {
-        if(inMessage.info.type == 'internal') {
-            inValue = inMessage.info.value.coins;
-        }
-        else if(inMessage.info.type == 'external-in') {
-            // Negative because of import cost
-            inValue -= computeCellForwardFees(msgPrices, beginCell().store(storeMessage(inMessage)).endCell());
-        }
-        else {
-            throw new TypeError("external-out can't be incomming message!");
-        }
-    }
-
-    const msgPacked = beginCell().store(storeMessageRelaxed(message)).endCell();
-
-    const fees = computeCellForwardFees(msgPrices, msgPacked);
-
-    let expOut  = message.info.value.coins;
-
-    let balanceAfter = balanceBefore - expOut;
-    // Usually means it's not the first action, so gas has already been deducted and credit added
-    if(!computed) {
-        balanceAfter += inValue - computePhase.gasFees;
-    }
-
-    if(!(mode  & SendMode.PAY_GAS_SEPARATELY)) {
-        expOut -= fees;
-        feesPaid = true;
-    }
-    else {
-        balanceAfter -= fees;
-    }
-    /*
-    else if(mode & SendMode.PAY_GAS_SEPARATELY) {
-        if(!(mode & SendMode.CARRY_ALL_REMAINING_BALANCE) || (mode & SendMode.CARRY_ALL_REMAINING_INCOMING_VALUE)) {
-            balanceAfter -= fees;
-        }
-    }
-    */
-    if(mode & SendMode.CARRY_ALL_REMAINING_BALANCE) {
-        expOut = balanceAfter - fees + message.info.value.coins;
-        balanceAfter = 0n;
-    }
-    if(mode & SendMode.CARRY_ALL_REMAINING_INCOMING_VALUE) {
-        if(mode & SendMode.CARRY_ALL_REMAINING_BALANCE) {
-            throw new TypeError("Mode 64 and 128 is not compatible");
-        }
-        if(!inMessage) {
-            throw new Error("Mode 64 doesn't work without incomming message");
-        }
-        if(inMessage.info.type != 'internal') {
-            throw new Error("Mode 64 doesn't work with external incomming message");
-        }
-
-        expOut = inValue - computePhase.gasFees + message.info.value.coins - fees;
-        balanceAfter -= inValue - computePhase.gasFees;
-        /*
-        if(!feesPaid) {
-            expOut -= fees;
-        }
-        */
-    }
-    return {expValue: expOut, balanceAfter};
 }
