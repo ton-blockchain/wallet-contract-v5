@@ -1,6 +1,4 @@
-import { Cell, Slice, toNano, beginCell, Address, Dictionary, Message, DictionaryValue, Transaction, BitString, SendMode, MessageRelaxed, CommonMessageInfoInternal, storeMessage, storeMessageRelaxed } from '@ton/core';
-import { internal } from '@ton/sandbox';
-import { randomAddress } from './utils';
+import { Cell, Slice, toNano, beginCell, Address, Dictionary, Message, DictionaryValue, Transaction, BitString, SendMode, MessageRelaxed, CommonMessageInfoInternal, storeMessage, storeMessageRelaxed, storeStateInit } from '@ton/core';
 
 export type GasPrices = {
 	flat_gas_limit: bigint,
@@ -202,61 +200,75 @@ export function computeCellForwardFees(msgPrices: MsgPrices, msg: Cell) {
     return computeFwdFees(msgPrices, storageStats.cells, storageStats.bits);
 }
 export function computeMessageForwardFees(msgPrices: MsgPrices, msg: Message)  {
-    // let msg = loadMessageRelaxed(cell.beginParse());
-    let storageStats = new StorageStats();
-
     if( msg.info.type !== "internal") {
         throw Error("Helper intended for internal messages");
     }
+
+    let storageStats = new StorageStats();
     const defaultFwd = computeDefaultForwardFee(msgPrices);
     // If message forward fee matches default than msg cell is flat
     if(msg.info.forwardFee == defaultFwd) {
-        return {fees: {total: msgPrices.lumpPrice, res : defaultFwd, remaining: defaultFwd}, stats: storageStats};
+        return {fees: computeFwdFeesVerbose(msgPrices, 0n, 0n), stats: storageStats};
     }
-    let visited : Array<string> = [];
-    // Init
-    if (msg.init) {
-        let addBits  = 5n; // Minimal additional bits
-        let refCount = 0;
-        if(msg.init.splitDepth) {
-            addBits += 5n;
-        }
-        if(msg.init.libraries) {
-            refCount++;
-            storageStats = storageStats.add(collectCellStats(beginCell().storeDictDirect(msg.init.libraries).endCell(), visited, true));
-        }
-        if(msg.init.code) {
-            refCount++;
-            storageStats = storageStats.add(collectCellStats(msg.init.code, visited))
-        }
-        if(msg.init.data) {
-            refCount++;
-            storageStats = storageStats.add(collectCellStats(msg.init.data, visited));
-        }
-        if(refCount >= 2) { //https://github.com/ton-blockchain/ton/blob/51baec48a02e5ba0106b0565410d2c2fd4665157/crypto/block/transaction.cpp#L2079
-            storageStats.cells++;
-            storageStats.bits += addBits;
-        }
-    }
-    const lumpBits  = BigInt(msg.body.bits.length);
-    const bodyStats = collectCellStats(msg.body,visited, true);
-    storageStats = storageStats.add(bodyStats);
 
-    // NOTE: Extra currencies are ignored for now
-    let fees = computeFwdFeesVerbose(msgPrices, BigInt(storageStats.cells), BigInt(storageStats.bits));
-    // Meeh
-    if(fees.remaining < msg.info.forwardFee) {
-        // console.log(`Remaining ${fees.remaining} < ${msg.info.forwardFee} lump bits:${lumpBits}`);
-        storageStats = storageStats.addCells(1).addBits(lumpBits);
-        fees = computeFwdFeesVerbose(msgPrices, storageStats.cells, storageStats.bits);
+    // C++ reference:
+    // sstat.add_used_storage(msg.init, true, 3);
+    // sstat.add_used_storage(msg.body, true, 3);
+    // skip_root_count=3 means "do not count root cell and root bits", only referenced cells.
+    // For StateInit and body we need to account for both encodings:
+    //   - inline:  (Either left)  -> root is skipped, only refs are counted
+    //   - by ref:  (Either right) -> referenced root cell is counted
+    const initCell = msg.init ? beginCell().store(storeStateInit(msg.init)).endCell() : null;
+    const initModes = initCell ? [false, true] : [false]; // false = inline, true = by ref
+    const bodyModes = [false, true]; // false = inline, true = by ref
+
+    let bestAttempt: {
+        fees: ReturnType<typeof computeFwdFeesVerbose>,
+        stats: StorageStats,
+        delta: bigint,
+        initByRef: boolean,
+        bodyByRef: boolean
+    } | null = null;
+
+    const absBigInt = (v: bigint) => v < 0n ? -v : v;
+
+    for (const initByRef of initModes) {
+        for (const bodyByRef of bodyModes) {
+            let candidateStats = new StorageStats();
+            let visited: Array<string> = [];
+
+            if (initCell) {
+                candidateStats = candidateStats.add(collectCellStats(initCell, visited, !initByRef));
+            }
+            candidateStats = candidateStats.add(collectCellStats(msg.body, visited, !bodyByRef));
+
+            // NOTE: Extra currencies are ignored for now
+            const candidateFees = computeFwdFeesVerbose(msgPrices, candidateStats.cells, candidateStats.bits);
+            const delta = candidateFees.remaining - msg.info.forwardFee;
+
+            if (bestAttempt === null || absBigInt(delta) < absBigInt(bestAttempt.delta)) {
+                bestAttempt = {
+                    fees: candidateFees,
+                    stats: candidateStats,
+                    delta,
+                    initByRef,
+                    bodyByRef
+                };
+            }
+
+            if (delta === 0n) {
+                return {fees: candidateFees, stats: candidateStats};
+            }
+        }
     }
-    if(fees.remaining != msg.info.forwardFee) {
-        console.log("Result fees:", fees);
-        console.log(msg);
-        console.log(fees.remaining);
-        throw(new Error("Something went wrong in fee calcuation!"));
+
+    if (bestAttempt !== null) {
+        console.log("Result fees:", msg.info.forwardFee);
+        console.log("Closest delta:", bestAttempt.delta);
+        console.log("Closest remaining:", bestAttempt.fees.remaining);
+        console.log("Closest layout:", `initByRef=${bestAttempt.initByRef}, bodyByRef=${bestAttempt.bodyByRef}`);
     }
-    return {fees, stats: storageStats};
+    throw(new Error("Something went wrong in fee calculation!"));
 }
 
 export const configParseMsgPrices = (sc: Slice) => {
