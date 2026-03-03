@@ -1,4 +1,4 @@
-import { Cell, Slice, toNano, beginCell, Address, Dictionary, Message, DictionaryValue, Transaction, storeStateInit } from '@ton/core';
+import { Cell, Slice, toNano, beginCell, Address, Dictionary, Message, DictionaryValue, Transaction, BitString, SendMode, MessageRelaxed, CommonMessageInfoInternal, storeMessage, storeMessageRelaxed, storeStateInit } from '@ton/core';
 
 export type GasPrices = {
 	flat_gas_limit: bigint,
@@ -332,4 +332,96 @@ export function computeFwdFeesVerbose(msgPrices: MsgPrices, cells: bigint | numb
         res,
         remaining: fees - res
     }
+}
+
+export const setPrecompiledGas = (configRaw: Cell, code_hash: Buffer, gas_usage: number) => {
+    const config = configRaw.beginParse().loadDictDirect(Dictionary.Keys.Int(32), Dictionary.Values.Cell());
+
+    const entry = beginCell().storeUint(0xb0, 8)
+      .storeUint(gas_usage, 64)
+      .endCell().beginParse();
+    let dict = Dictionary.empty(Dictionary.Keys.Buffer(32), Dictionary.Values.BitString(8 + 64));
+    dict.set(code_hash, entry.loadBits(8 + 64));
+    const param = beginCell().storeUint(0xc0, 8).storeBit(1).storeRef(beginCell().storeDictDirect(dict).endCell()).endCell();
+
+    config.set(45, param);
+
+    return beginCell().storeDictDirect(config).endCell();
+};
+
+export const estimateMessageImpact = <T extends Transaction>(message: MessageRelaxed, sendTx: T, msgPrices: MsgPrices, balanceBefore: bigint, mode: SendMode, computed: boolean) => {
+
+    if(message.info.type !== 'internal') {
+        throw new TypeError("External message is not supported!");
+    }
+
+    const computePhase = computedGeneric(sendTx);
+
+    let inValue   = 0n;
+    let inMessage = sendTx.inMessage;
+    let feesPaid  = false;
+
+    if(inMessage) {
+        if(inMessage.info.type == 'internal') {
+            inValue = inMessage.info.value.coins;
+        }
+        else if(inMessage.info.type == 'external-in') {
+            // Negative because of import cost
+            inValue -= computeCellForwardFees(msgPrices, beginCell().store(storeMessage(inMessage)).endCell());
+        }
+        else {
+            throw new TypeError("external-out can't be incomming message!");
+        }
+    }
+
+    const msgPacked = beginCell().store(storeMessageRelaxed(message)).endCell();
+
+    const fees = computeCellForwardFees(msgPrices, msgPacked);
+
+    let expOut  = message.info.value.coins;
+
+    let balanceAfter = balanceBefore - expOut;
+    // Usually means it's not the first action, so gas has already been deducted and credit added
+    if(!computed) {
+        balanceAfter += inValue - computePhase.gasFees;
+    }
+
+    if(!(mode  & SendMode.PAY_GAS_SEPARATELY)) {
+        expOut -= fees;
+        feesPaid = true;
+    }
+    else {
+        balanceAfter -= fees;
+    }
+    /*
+    else if(mode & SendMode.PAY_GAS_SEPARATELY) {
+        if(!(mode & SendMode.CARRY_ALL_REMAINING_BALANCE) || (mode & SendMode.CARRY_ALL_REMAINING_INCOMING_VALUE)) {
+            balanceAfter -= fees;
+        }
+    }
+    */
+    if(mode & SendMode.CARRY_ALL_REMAINING_BALANCE) {
+        expOut = balanceAfter - fees + message.info.value.coins;
+        balanceAfter = 0n;
+    }
+    if(mode & SendMode.CARRY_ALL_REMAINING_INCOMING_VALUE) {
+        if(mode & SendMode.CARRY_ALL_REMAINING_BALANCE) {
+            throw new TypeError("Mode 64 and 128 is not compatible");
+        }
+        if(!inMessage) {
+            throw new Error("Mode 64 doesn't work without incomming message");
+        }
+        if(inMessage.info.type != 'internal') {
+            throw new Error("Mode 64 doesn't work with external incomming message");
+        }
+
+        expOut = inValue - computePhase.gasFees + message.info.value.coins - fees;
+        balanceAfter -= inValue - computePhase.gasFees;
+        /*
+        if(!feesPaid) {
+            expOut -= fees;
+        }
+        */
+    }
+    return {expValue: expOut, balanceAfter};
 }
