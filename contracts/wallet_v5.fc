@@ -92,11 +92,10 @@ cell verify_c5_actions(cell c5, int is_external) inline {
 
 () process_actions(slice cs, int is_external, int is_extension) impure inline_ref {
   cell c5_actions = cs~load_maybe_ref();
-  ifnot (cell_null?(c5_actions)) {
-    ;; Simply set the C5 register with all pre-computed actions after verification:
-    set_c5_actions(c5_actions.verify_c5_actions(is_external));
-  }
-  if (cs~load_int(1) == 0) { ;; has_other_actions
+  if (cs~load_int(1) == 0) { ;; has_other_actions — no extension actions, safe to set C5 now
+    ifnot (cell_null?(c5_actions)) {
+      set_c5_actions(c5_actions.verify_c5_actions(is_external));
+    }
     return ();
   }
 
@@ -153,6 +152,10 @@ cell verify_c5_actions(cell c5, int is_external) inline {
       throw(error::unsupported_action);
     }
     ifnot (cs.slice_refs()) {
+      ;; All extension actions completed successfully — now safe to commit send-message actions
+      ifnot (cell_null?(c5_actions)) {
+        set_c5_actions(c5_actions.verify_c5_actions(is_external));
+      }
       return ();
     }
     cs = cs.preload_ref().begin_parse();
