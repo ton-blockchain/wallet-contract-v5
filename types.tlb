@@ -3,27 +3,31 @@ out_list_empty$_ = OutList 0;
 out_list$_ {n:#} prev:^(OutList n) action:OutAction = OutList (n + 1);
 action_send_msg#0ec3c86d mode:(## 8) out_msg:^(MessageRelaxed Any) = OutAction;
 
-// Extended actions in W5:
-action_list_basic$_ {n:#} actions:^(OutList n) = ActionList n 0;
-action_list_extended$_ {m:#} {n:#} action:ExtendedAction prev:^(ActionList n m) = ActionList n (m+1);
 
-action_add_ext#02 addr:MsgAddressInt = ExtendedAction;
-action_delete_ext#03 addr:MsgAddressInt = ExtendedAction;
-action_set_signature_auth_allowed#04 allowed:(## 1) = ExtendedAction;
+// Extended for W5:
+// note: `m = extended actions count - 1`, so the last ref is not empty cell
+extended_list_last$_ action:W5ExtendedAction = W5ExtendedActionList 0;
+extended_list_action$_ {m:#} action:W5ExtendedAction prev:^(W5ExtendedActionList m) = W5ExtendedActionList (m + 1);
 
-signed_request$_             // 32 (opcode from outer)
-  wallet_id:    #            // 32
-  valid_until:  #            // 32
-  msg_seqno:    #            // 32
-  inner:        InnerRequest //
-  signature:    bits512      // 512
-= SignedRequest;             // Total: 688 .. 976 + ^Cell
+add_extension#02 addr:MsgAddressInt = W5ExtendedAction;
+delete_extension#03 addr:MsgAddressInt = W5ExtendedAction;
+set_signature_auth_allowed#04 allowed:Bool = W5ExtendedAction;
 
-internal_signed#73696e74 signed:SignedRequest = InternalMsgBody;
-internal_extension#6578746e query_id:(## 64) inner:InnerRequest = InternalMsgBody;
-external_signed#7369676e signed:SignedRequest = ExternalMsgBody;
+w5_actions_request$_ {m:#} {n:#} out_actions:(Maybe ^(OutList m)) extended_actions:(Maybe (W5ExtendedActionList n)) = W5InnerRequest m n;
 
-actions$_ out_actions:(Maybe OutList) has_other_actions:(## 1) {m:#} {n:#} other_actions:(ActionList n m) = InnerRequest;
+w5_signed_request$_ {m:#} {n:#}
+  wallet_id:    uint32
+  valid_until:  uint32
+  msg_seqno:    uint32
+  inner:        (W5InnerRequest m n)
+  signature:    bits512
+= W5SignedRequest m n;
+
+// actions_count = m, extended_actions_count-1 = n
+w5_internal_signed_request#73696e74 {m:#} {n:#} request:(W5SignedRequest m n) = W5MsgBody m n;
+w5_external_signed_request#7369676e {m:#} {n:#} request:(W5SignedRequest m n) = W5MsgBody m n;
+
+w5_extension_action_request#6578746e {m:#} {n:#} query_id:uint64 request:(W5InnerRequest m n) = W5MsgBody m n;
 
 // Contract state
 contract_state$_ is_signature_allowed:(## 1) seqno:# wallet_id:(## 32) public_key:(## 256) extensions_dict:(HashmapE 256 int1) = ContractState;
