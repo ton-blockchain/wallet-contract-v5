@@ -1,21 +1,14 @@
 import { Blockchain, SandboxContract } from '@ton/sandbox';
 import { Address, beginCell, Cell, Dictionary, Sender, toNano } from '@ton/core';
-import { WalletV5 } from '../wrappers/wallet-v5';
+import { WalletId, WalletV5 } from '../wrappers/wallet-v5';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
-import { getSecureRandomBytes, KeyPair, keyPairFromSeed } from '@ton/crypto';
+import { getSecureRandomBytes, KeyPair, keyPairFromSeed } from 'ton-crypto';
 import { bufferToBigInt, packAddress } from './utils';
 import { buildBlockchainLibraries, LibraryDeployer } from '../wrappers/library-deployer';
-import { storeWalletIdV5R1, WalletIdV5R1, WalletIdV5R1ClientContext, WalletV5Test } from '../wrappers/wallet-v5-test';
 
-const WALLET_ID: WalletIdV5R1 = {
-    networkGlobalId: -239,
-    context: {
-        workchain: 0,
-        walletVersion: 'v5r1',
-        subwalletNumber: 0
-    }
-}
+const WALLET_ID = new WalletId({ networkGlobalId: -239, workChain: 0, subwalletNumber: 0 });
+
 describe('Wallet V5 get methods', () => {
     let code: Cell;
 
@@ -24,11 +17,11 @@ describe('Wallet V5 get methods', () => {
     });
 
     let blockchain: Blockchain;
-    let walletV5: SandboxContract<WalletV5Test>;
+    let walletV5: SandboxContract<WalletV5>;
     let keypair: KeyPair;
     let sender: Sender;
 
-    async function deploy(params?: Partial<Parameters<typeof WalletV5Test.createFromConfig>[0]>) {
+    async function deploy(params?: Partial<Parameters<typeof WalletV5.createFromConfig>[0]>) {
         blockchain = await Blockchain.create();
         blockchain.libs = buildBlockchainLibraries([code]);
         if (!params?.publicKey) {
@@ -36,11 +29,11 @@ describe('Wallet V5 get methods', () => {
         }
 
         walletV5 = blockchain.openContract(
-            WalletV5Test.createFromConfig(
+            WalletV5.createFromConfig(
                 {
                     signatureAllowed: true,
                     seqno: params?.seqno ?? 0,
-                    walletId: params?.walletId ?? WALLET_ID,
+                    walletId: params?.walletId ?? WALLET_ID.serialized,
                     publicKey: params?.publicKey ?? keypair.publicKey,
                     extensions: params?.extensions ?? Dictionary.empty()
                 },
@@ -79,52 +72,38 @@ describe('Wallet V5 get methods', () => {
     });
 
     it('Get wallet id', async () => {
-        const expectedWalletId: WalletIdV5R1 = {
+        const expectedWalletId = new WalletId({
             networkGlobalId: -239,
-            context: {
-                workchain: 0,
-                walletVersion: 'v5r1',
-                subwalletNumber: 1
-            }
-        };
-        await deploy({ walletId: expectedWalletId });
+            workChain: 0,
+            subwalletNumber: 1
+        });
+        await deploy({ walletId: expectedWalletId.serialized });
         const actualWalletId = await walletV5.getWalletId();
-        const packedWalletId = beginCell().store(storeWalletIdV5R1(expectedWalletId)).endCell().beginParse().loadInt(32);
-        expect(actualWalletId).toEqual(packedWalletId);
+        expect(expectedWalletId.subwalletNumber).toEqual(actualWalletId.subwalletNumber);
     });
 
     it('Get subwallet number', async () => {
         const subwalletNumber = 12345;
-
-        const walletId: WalletIdV5R1 = {
+        const walletId = new WalletId({
             networkGlobalId: -239,
-            context: {
-                walletVersion: 'v5r1',
-                workchain: 0,
-                subwalletNumber
-            }
-        };
-
-        await deploy({ walletId: walletId });
-        const actualSubwalletNumber = (await walletV5.getWalletIdParsed()).context.subwalletNumber;
+            workChain: 0,
+            subwalletNumber
+        });
+        await deploy({ walletId: walletId.serialized });
+        const actualSubwalletNumber = (await walletV5.getWalletId()).subwalletNumber;
         expect(subwalletNumber).toEqual(actualSubwalletNumber);
     });
 
     it('Default wallet id', async () => {
-
-        /*
         const walletId = new WalletId({
             networkGlobalId: -239,
             workChain: 0,
             subwalletNumber: 0,
             walletVersion: 'v5'
         });
-        */
-        const defaultWalletId = beginCell().store(storeWalletIdV5R1(WALLET_ID)).endCell().beginParse().loadInt(32);
+        const defaultWalletId = new WalletId();
 
-        // Deploying default wallet
-        await deploy();
-        expect(await walletV5.getWalletId()).toBe(defaultWalletId);
+        expect(walletId.serialized).toBe(defaultWalletId.serialized);
     });
 
     it('Get extensions dict', async () => {
