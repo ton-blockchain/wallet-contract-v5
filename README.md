@@ -1,6 +1,6 @@
 # W5: wallet smart contract v5
 
-New version of wallet smart contract, the previous one was [v4r2](https://github.com/ton-blockchain/wallet-contract).
+New version of wallet smart contract, the previous one was [v4r2](https://github.com/ton-blockchai no/wallet-contract).
 
 The entire concept is proposed by the [Tonkeeper team](https://tonkeeper.com/).
 
